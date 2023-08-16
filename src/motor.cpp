@@ -26,35 +26,19 @@ void motor::backward(int speed){
     digitalWrite(BIN1, HIGH); analogWrite(PWMB_RIGHT, speed);
 }
 
-void motor::right(int speed){
-    digitalWrite(AIN1, LOW); analogWrite(PWMA_LEFT, 0);
-    digitalWrite(BIN1, LOW); analogWrite(PWMB_RIGHT, speed);
-}
-
-void motor::left(int speed){
-    digitalWrite(AIN1, LOW); analogWrite(PWMA_LEFT, speed);
-    digitalWrite(BIN1, LOW); analogWrite(PWMB_RIGHT, 0);
-}
-
 void motor::stop(){
     analogWrite(PWMA_LEFT, 0); analogWrite(PWMB_RIGHT, 0);
 }
 
 /*----------------------------------------*/
 
-// void motor::encoderPinInit(){
-//     /*Pin Interrupts to Count Pulses*/
-//     attachInterrupt(digitalPinToInterrupt(ENCODER_LEFT_A_PIN),motor::leftWheelPulse, CHANGE);
-//     attachPCINT(digitalPinToPCINT(ENCODER_RIGHT_A_PIN),motor::rightWheelPulse, CHANGE);
-// }
+void motor::encoderPinInit(){
+    /*Pin Interrupts to Count Pulses*/
+    attachInterrupt(digitalPinToInterrupt(ENCODER_LEFT_A_PIN),motor::wheelPulse, CHANGE);
+}
 
-// unsigned long motor::s_LeftEncoderCount = 0;
-// unsigned long motor::s_RightEncoderCount = 0;
+unsigned long motor::s_EncoderCount = 0;
 
-// void motor::leftWheelPulse(){
-//     motor::s_LeftEncoderCount++;
-// }
-
-// void motor::rightWheelPulse(){
-//     motor::s_RightEncoderCount++;
-// }
+void motor::wheelPulse(){
+    motor::s_EncoderCount++;
+}

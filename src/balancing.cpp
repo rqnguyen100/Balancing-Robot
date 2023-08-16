@@ -1,39 +1,101 @@
 #include <Arduino.h>
 #include <balancing.h>
+#include <motor.h> 
 #include "I2Cdev.h"
 #include "MPU6050_6Axis_MotionApps612.h"
+#include "MsTimer2.h"
 #if I2CDEV_IMPLEMENTATION == I2CDEV_ARDUINO_WIRE
     #include "Wire.h"
 #endif
 
-balancing::balancing(){
-    // constructor
-    kpV = 1;
-    kiV = 0; 
-    kdV = 0;
+balancing balanced;
+imu pitch;
+motor encoder;
+timer2 timerX;
+
+void timer2::init(int time){
+    /*Initialize the Timer Interrupt*/
+    MsTimer2::set(time,interrupt);
+    MsTimer2::start();
 }
 
-void balancing::vertical(float list[5]){
-    /*Finding Integral Term*/
-    float sum = 0;
-    for (int i = 0; i < 5; i++){
-        sum += list[i];
+void timer2::interrupt(){
+    sei();
+    balanced.getVelocity(); 
+    pitch.dataProcess();
+    balanced.vertical();
+
+    timerX.interruptCount++;
+    if(timerX.interruptCount > 4){
+        timerX.interruptCount=0;
+        balanced.velocityControl();
     }
 
-    float pV = kpV * list[4];
-    float iV = kiV * sum;
-    float dV = kdV * (list[4] - list[3]);
+    balanced.totalControl();
+}
 
-    balancing::controlOutput= pV + iV + dV;
+balancing::balancing(){
+    // constructor
+    kp_balanced = 35; kp_speed = .1;
+    ki_balanced = 1; 
+    kd_balanced = 10;
+}
+
+/*----------------------------------------*/
+
+void balancing::getVelocity(){
+    /*Determine if motor is rotating forward or backwards*/
+    int speed = balanced.pwmSpeed;
+
+    if (speed > 0){
+        balancing::velocity += encoder.s_EncoderCount;
+    }
+    else if (speed < -0){
+        balancing::velocity -= encoder.s_EncoderCount;
+    }
+
+    balancing::velocity = constrain(balancing::velocity, -25, 25);
+
+    // Resert values
+    encoder.s_EncoderCount = 0;
+}
+
+void balancing::vertical(){    
+    /*Calculating Control Output*/
+    float pV = kp_balanced * pitch.currentPitch;
+    float iV = ki_balanced * (pitch.currentPitch + pitch.prevPitch);
+    float dV = kd_balanced * (pitch.currentPitch - pitch.prevPitch);
+    pitch.prevPitch = pitch.currentPitch;
+    
+    balanced.controlOutput = pV + iV + dV;
+    balanced.controlOutput = constrain(balanced.controlOutput,-125,125);
+}
+
+void balancing::velocityControl(){
+    double velocity = balanced.velocity;
+
+    balanced.velocityOutput = kp_speed * (0 - velocity);
+}
+
+void balancing::totalControl(){
+    /*Calculate Speed*/
+    balanced.vertical();
+    balanced.velocityControl();
+
+    balanced.pwmSpeed = balanced.controlOutput + balanced.velocity;
+
+    /*Actuate Motor*/
+    if (balanced.pwmSpeed > 0){
+        encoder.forward(balanced.pwmSpeed);
+    }
+    else if (balanced.pwmSpeed < 0){
+        encoder.backward(-balanced.pwmSpeed);
+    }
 }
 
 /*----------------------------------------*/
 
 MPU6050 mpu;
-
-imu::imu(){
-    // constructor
-}
 
 void imu::init(){
     /*Join I2C Bus*/
@@ -73,6 +135,19 @@ void imu::getYawPitchRoll(float& y, float& p, float& r){
         p = pr * 180 / M_PI;
         r = rr * 180 / M_PI;
     }
+}
+
+void imu::dataProcess(){
+    /*Get MPU Data*/
+    float yaw, pitch, roll;
+    float offset = -5.5;
+
+    imu::getYawPitchRoll(yaw, pitch, roll);
+    imu::pitchBuffer = 0;
+    for (int i = 0; i < imu::trials; i++){
+        imu::pitchBuffer += (pitch - offset);
+    }
+    imu::currentPitch = pitchBuffer / imu::trials;
 }
 
 void imu::offsets(){

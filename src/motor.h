@@ -5,7 +5,7 @@ class motor{
 
     public:
         /*Variables*/
-        static unsigned long s_LeftEncoderCount, s_RightEncoderCount;
+        static unsigned long s_EncoderCount;
 
     public:
         /*Functions*/
@@ -16,12 +16,9 @@ class motor{
         
         void forward(int speed);
         void backward(int speed);
-        void right(int speed);
-        void left(int speed);
         void stop();
 
-        static void leftWheelPulse();
-        static void rightWheelPulse();
+        static void wheelPulse();
 
     private:
         /*Motor pin*/
@@ -33,7 +30,6 @@ class motor{
 
         /*Encoder measuring speed pin*/ 
         #define ENCODER_LEFT_A_PIN 2 
-        #define ENCODER_RIGHT_A_PIN 4
 };
 
 #endif

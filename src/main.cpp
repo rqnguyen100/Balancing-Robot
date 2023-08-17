@@ -10,19 +10,21 @@ balancing c_Balanced;
 
 void setup() {
     Serial.begin(115200);
-    Serial.println("Initing...");
+    Serial.println("Initializing");
 
     /*Pin Initializers*/
     c_Motor.motorPinInit(); 
     c_Motor.encoderPinInit();
+    Serial.println("Pins Initialized");
 
     /*Initialize MPU-6050*/    
     c_MPU6050.init();
-
-    Serial.println("Ready");
+    Serial.println("MPU Initialized");
 
     /*Timer Initalize*/
-    timer.init(TIMER);}
+    Serial.println("Ready");
+    timer.init(TIMER);
+}
 
 void loop(){
 }

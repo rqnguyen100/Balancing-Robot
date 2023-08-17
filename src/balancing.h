@@ -4,19 +4,22 @@
 class balancing{
     public:
         balancing();
-        void getVelocity();
-        void velocityControl();
+        void getAcceleration();
+        void accelerationControl();
 
         void vertical();
         void totalControl();
 
     public:
         int kp_balanced, ki_balanced, kd_balanced;
-        int kp_speed;
+        int kp_acc;
         int controlOutput;
 
-        int velocity;
-        int velocityOutput;
+        float currentPos = 0; float prevPos = 0;
+        float currentVel = 0; float prevVel = 0;
+        float currentAcc = 0; float prevAcc = 0;
+        float filteredAcc = 0;
+        int accelerationOutput;
         
         int pwmSpeed = 0;
 

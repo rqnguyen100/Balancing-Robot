@@ -12,6 +12,7 @@ balancing balanced;
 imu pitch;
 motor encoder;
 timer2 timerX;
+MPU6050 mpu;
 
 void timer2::init(int time){
     /*Initialize the Timer Interrupt*/
@@ -21,14 +22,14 @@ void timer2::init(int time){
 
 void timer2::interrupt(){
     sei();
-    balanced.getVelocity(); 
+    balanced.getAcceleration(); 
     pitch.dataProcess();
     balanced.vertical();
 
     timerX.interruptCount++;
-    if(timerX.interruptCount > 4){
+    if(timerX.interruptCount > 8){
         timerX.interruptCount=0;
-        balanced.velocityControl();
+        balanced.accelerationControl();
     }
 
     balanced.totalControl();
@@ -36,28 +37,36 @@ void timer2::interrupt(){
 
 balancing::balancing(){
     // constructor
-    kp_balanced = 35; kp_speed = .1;
+    kp_balanced = 60; kp_acc = 10;
     ki_balanced = 1; 
-    kd_balanced = 10;
+    kd_balanced = 15;
 }
 
 /*----------------------------------------*/
 
-void balancing::getVelocity(){
+void balancing::getAcceleration(){
     /*Determine if motor is rotating forward or backwards*/
     int speed = balanced.pwmSpeed;
+    int iDeltaT = 1000/40;
 
     if (speed > 0){
-        balancing::velocity += encoder.s_EncoderCount;
+        balanced.currentPos += (2 * 3.14 * 7 * encoder.s_EncoderCount / 658); // cm
     }
     else if (speed < -0){
-        balancing::velocity -= encoder.s_EncoderCount;
+        balanced.currentPos -= (2 * 3.14 * 7 * encoder.s_EncoderCount / 658); // cm
     }
 
-    balancing::velocity = constrain(balancing::velocity, -25, 25);
+    balanced.currentVel = (balanced.currentPos - balanced.prevPos) * iDeltaT; 
+    balanced.currentAcc = (balanced.currentVel - balanced.prevVel) * iDeltaT; 
 
-    // Resert values
+    /*High Pass Filter*/
+    float weight = 0.5; 
+    balanced.filteredAcc = weight * (balanced.filteredAcc + balanced.currentAcc - balanced.prevAcc);
+
+    // Reset values
     encoder.s_EncoderCount = 0;
+    balanced.prevPos = balanced.currentPos; balanced.prevVel = balanced.currentVel;
+    balanced.prevAcc = balanced.currentAcc;
 }
 
 void balancing::vertical(){    
@@ -68,21 +77,25 @@ void balancing::vertical(){
     pitch.prevPitch = pitch.currentPitch;
     
     balanced.controlOutput = pV + iV + dV;
-    balanced.controlOutput = constrain(balanced.controlOutput,-125,125);
+    balanced.controlOutput = constrain(balanced.controlOutput, -250, 250);
 }
 
-void balancing::velocityControl(){
-    double velocity = balanced.velocity;
+void balancing::accelerationControl(){
+    double acc = balanced.filteredAcc;
 
-    balanced.velocityOutput = kp_speed * (0 - velocity);
+    balanced.accelerationOutput = kp_acc * -acc;
+    balanced.accelerationOutput = constrain(balanced.accelerationOutput, -100, 100);
 }
 
 void balancing::totalControl(){
     /*Calculate Speed*/
     balanced.vertical();
-    balanced.velocityControl();
+    balanced.accelerationControl();
 
-    balanced.pwmSpeed = balanced.controlOutput + balanced.velocity;
+    /*Complimentary Filter*/
+    float weight = 0.5;
+    balanced.pwmSpeed = weight * balanced.controlOutput + (1-weight) * balanced.accelerationOutput;
+    balanced.pwmSpeed = constrain(balanced.pwmSpeed,-150,150);
 
     /*Actuate Motor*/
     if (balanced.pwmSpeed > 0){
@@ -95,8 +108,6 @@ void balancing::totalControl(){
 
 /*----------------------------------------*/
 
-MPU6050 mpu;
-
 void imu::init(){
     /*Join I2C Bus*/
     #if I2CDEV_IMPLEMENTATION == I2CDEV_ARDUINO_WIRE
@@ -106,7 +117,7 @@ void imu::init(){
     /*Initialize MPU*/
     mpu.initialize();
     mpu.testConnection();
-    offsets(); // gyro offsets
+    offsets(); // offsets
 
     /*Initilize DMP*/
     uint8_t devStatus;
@@ -148,27 +159,37 @@ void imu::dataProcess(){
         imu::pitchBuffer += (pitch - offset);
     }
     imu::currentPitch = pitchBuffer / imu::trials;
-}
 
-void imu::offsets(){
-    /*Gyro Offsets*/
-    mpu.setXGyroOffset(75);
-    mpu.setYGyroOffset(-256);
-    mpu.setZGyroOffset(82);
-    mpu.setZAccelOffset(416);
+    /*Low Pass Filter*/
+    float weight = 0.95;
+    imu::currentPitch = weight * imu::currentPitch + (1 - weight) * imu::prevPitch;
 }
 
 void imu::calibrate(){
     int ax, ay, az, gx, gy, gz;
     mpu.getMotion6(&ax, &ay, &az, &gx, &gy, &gz);
 
-    // Looking for values to set (gx,gy,gz,az) to (0,0,0,16384)
+    // Looking for values to set to (0,0,0,0,0,16384)
     // Will input values into offsets()
+    Serial.print(ax);
+    Serial.print(",");
+    Serial.print(ay);
+    Serial.print(",");
+    Serial.print(az);
+    Serial.print(",");
     Serial.print(gx);
     Serial.print(",");
     Serial.print(gy);
     Serial.print(",");
-    Serial.print(gz);
-    Serial.print(",");
-    Serial.println(az);
+    Serial.println(gz);
+}
+
+void imu::offsets(){
+    /*Gyro Offsets*/
+    mpu.setXAccelOffset(-2974);
+    mpu.setYAccelOffset(-2335);
+    mpu.setZAccelOffset(1503);
+    mpu.setXGyroOffset(138);
+    mpu.setYGyroOffset(-502);
+    mpu.setZGyroOffset(157);
 }
